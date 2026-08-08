@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RFID Scanner — Live Dashboard</title>
+  <meta name="description" content="Real-time RFID scan event monitor for IoT devices on the local network." />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50:  '#f0fdf9',
+              100: '#ccfbef',
+              200: '#99f6e0',
+              300: '#5eead4',
+              400: '#2dd4bf',
+              500: '#14b8a6',
+              600: '#0d9488',
+              700: '#0f766e',
+              800: '#115e59',
+              900: '#134e4a',
+            },
+          },
+          animation: {
+            'pulse-fast': 'pulse 0.8s cubic-bezier(0.4,0,0.6,1) infinite',
+            'slide-in':   'slideIn 0.4s cubic-bezier(0.16,1,0.3,1) forwards',
+            'fade-in':    'fadeIn 0.3s ease-out forwards',
+          },
+          keyframes: {
+            slideIn: {
+              '0%':   { opacity: '0', transform: 'translateY(-12px) scale(0.98)' },
+              '100%': { opacity: '1', transform: 'translateY(0)    scale(1)'    },
+            },
+            fadeIn: {
+              '0%':   { opacity: '0' },
+              '100%': { opacity: '1' },
+            },
+          },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #0d9488; border-radius: 99px; }
+
+    /* ── Glassmorphism card ── */
+    .glass {
+      background: rgba(255,255,255,0.04);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    /* ── Event card entrance ── */
+    .event-card { animation: slideIn 0.4s cubic-bezier(0.16,1,0.3,1) forwards; }
+
+    /* ── Live indicator dot ── */
+    @keyframes livePulse {
+      0%, 100% { transform: scale(1);   opacity: 1;   }
+      50%       { transform: scale(1.6); opacity: 0.4; }
+    }
+    .live-dot { animation: livePulse 1.4s ease-in-out infinite; }
+
+    /* ── Noise texture overlay ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Tag flash when new event arrives ── */
+    @keyframes tagFlash {
+      0%   { box-shadow: 0 0 0 0 rgba(45,212,191,0.7); }
+      70%  { box-shadow: 0 0 0 12px rgba(45,212,191,0); }
+      100% { box-shadow: 0 0 0 0   rgba(45,212,191,0); }
+    }
+    .tag-flash { animation: tagFlash 0.8s ease-out; }
+  </style>
+</head>
+
+<body class="min-h-screen bg-gray-950 text-gray-100 font-sans antialiased overflow-x-hidden">
+
+  <!-- ── Ambient glow blobs ─────────────────────────────────────────── -->
+  <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
+    <div class="absolute -top-40 -left-40  w-[600px] h-[600px] rounded-full bg-brand-600/20 blur-[120px]"></div>
+    <div class="absolute -bottom-60 -right-20 w-[500px] h-[500px] rounded-full bg-brand-800/15 blur-[100px]"></div>
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[300px] rounded-full bg-brand-900/10 blur-[80px]"></div>
+  </div>
+
+  <!-- ── Main layout ────────────────────────────────────────────────── -->
+  <div class="relative z-10 max-w-5xl mx-auto px-4 py-8">
+
+    <!-- ── Header ────────────────────────────────────────────────── -->
+    <header class="mb-8">
+      <div class="flex items-start justify-between flex-wrap gap-4">
+        <!-- Logo + Title -->
+        <div class="flex items-center gap-4">
+          <!-- RFID icon -->
+          <div class="w-12 h-12 rounded-2xl bg-brand-600/20 border border-brand-500/30 flex items-center justify-center flex-shrink-0">
+            <svg class="w-6 h-6 text-brand-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M8.25 3.75H5.625a1.875 1.875 0 0 0-1.875 1.875v3.375M8.25 20.25H5.625a1.875 1.875 0 0 1-1.875-1.875v-3.375M15.75 3.75h2.625a1.875 1.875 0 0 1 1.875 1.875v3.375M15.75 20.25h2.625a1.875 1.875 0 0 0 1.875-1.875v-3.375M9 9h6M9 12h6M9 15h6"/>
+            </svg>
+          </div>
+          <div>
+            <h1 class="text-2xl font-bold tracking-tight text-white">RFID Live Dashboard</h1>
+            <p class="text-sm text-gray-400 mt-0.5">Listening for IoT scan events in real time</p>
+          </div>
+        </div>
+
+        <!-- Live badge + controls -->
+        <div class="flex items-center gap-3 flex-wrap">
+          <!-- Live indicator -->
+          <div id="liveIndicator" class="flex items-center gap-2 px-3 py-1.5 rounded-full glass text-xs font-medium text-brand-300 border-brand-500/20">
+            <span class="live-dot w-2 h-2 rounded-full bg-brand-400 flex-shrink-0"></span>
+            <span id="liveLabel">LIVE</span>
+          </div>
+
+          <!-- Clear button -->
+          <button id="clearBtn"
+            class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium
+                   bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40
+                   text-red-400 hover:text-red-300 transition-all duration-200 active:scale-95">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/>
+            </svg>
+            Clear All
+          </button>
+
+          <!-- Test button -->
+          <button id="testBtn"
+            class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium
+                   bg-brand-600/20 hover:bg-brand-600/30 border border-brand-500/30 hover:border-brand-500/50
+                   text-brand-300 hover:text-brand-200 transition-all duration-200 active:scale-95">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z"/>
+            </svg>
+            Simulate Scan
+          </button>
+        </div>
+      </div>
+
+      <!-- ── Stats row ──────────────────────────────────────────── -->
+      <div class="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <!-- Total scans -->
+        <div class="glass rounded-2xl p-4">
+          <p class="text-xs text-gray-500 uppercase tracking-widest mb-1">Total Scans</p>
+          <p id="statTotal" class="text-2xl font-bold text-white">0</p>
+        </div>
+        <!-- Last tag -->
+        <div class="glass rounded-2xl p-4 col-span-2 sm:col-span-2">
+          <p class="text-xs text-gray-500 uppercase tracking-widest mb-1">Last Tag ID</p>
+          <p id="statLastTag" class="text-lg font-mono font-semibold text-brand-300 truncate">—</p>
+        </div>
+        <!-- Last seen -->
+        <div class="glass rounded-2xl p-4">
+          <p class="text-xs text-gray-500 uppercase tracking-widest mb-1">Last Seen</p>
+          <p id="statLastSeen" class="text-sm font-medium text-gray-300">—</p>
+        </div>
+      </div>
+    </header>
+
+    <!-- ── Endpoint info banner ───────────────────────────────────── -->
+    <div class="glass rounded-2xl p-4 mb-6 flex flex-wrap items-center gap-3">
+      <svg class="w-5 h-5 text-brand-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round"
+          d="M5.25 14.25h13.5m-13.5 0a3 3 0 0 1-3-3m3 3a3 3 0 0 0 3 3h7.5a3 3 0 0 0 3-3m-16.5 0V9a3 3 0 0 1 3-3h13.5a3 3 0 0 1 3 3v5.25m-4.5 0V17.25a.75.75 0 0 1-.75.75h-3a.75.75 0 0 1-.75-.75V14.25m4.5 0h-4.5"/>
+      </svg>
+      <span class="text-sm text-gray-400">POST endpoint:</span>
+      <code id="endpointUrl" class="font-mono text-brand-300 text-sm bg-brand-900/30 px-3 py-1 rounded-lg border border-brand-700/40 select-all">
+        loading…
+      </code>
+      <button id="copyBtn" title="Copy URL"
+        class="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+               bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-600
+               text-gray-400 hover:text-gray-200 transition-all duration-150 active:scale-95">
+        <svg id="copyIcon" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184"/>
+        </svg>
+        Copy
+      </button>
+    </div>
+
+    <!-- ── Event feed ─────────────────────────────────────────────── -->
+    <section>
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-widest">Event Feed</h2>
+        <span id="pollStatus" class="text-xs text-gray-600">Polling every 2s…</span>
+      </div>
+
+      <!-- Empty state -->
+      <div id="emptyState" class="glass rounded-2xl p-16 flex flex-col items-center justify-center text-center">
+        <div class="w-20 h-20 rounded-full bg-brand-900/40 flex items-center justify-center mb-4 border border-brand-700/30">
+          <svg class="w-9 h-9 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M9.348 14.652a3.75 3.75 0 0 1 0-5.304m5.304 0a3.75 3.75 0 0 1 0 5.304m-7.425 2.121a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12Z"/>
+          </svg>
+        </div>
+        <p class="text-gray-400 font-medium">Waiting for RFID scans…</p>
+        <p class="text-gray-600 text-sm mt-1">Point your IoT reader at an RFID tag to see events appear here.</p>
+      </div>
+
+      <!-- Events list -->
+      <div id="eventsList" class="space-y-3 hidden"></div>
+    </section>
+  </div>
+
+  <!-- ── Toast notification ─────────────────────────────────────── -->
+  <div id="toast"
+    class="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-2xl glass
+           border border-brand-500/20 text-sm font-medium text-brand-200
+           transform translate-y-16 opacity-0 transition-all duration-300 pointer-events-none">
+    <span id="toastIcon" class="text-brand-400">✓</span>
+    <span id="toastMsg">Event received!</span>
+  </div>
+
+  <!-- ── Script ─────────────────────────────────────────────────── -->
+  <script>
+    // ── Config ────────────────────────────────────────────────────────
+    const BASE     = '/api/rfid';
+    const POLL_MS  = 2000;
+
+    // ── Dynamically set the displayed POST endpoint URL ───────────────
+    document.getElementById('endpointUrl').textContent =
+      `${window.location.protocol}//${window.location.host}/api/rfid/scan.php`;
+
+    let knownIds   = new Set();
+    let pollTimer  = null;
+    let isPaused   = false;
+
+    // ── DOM refs ──────────────────────────────────────────────────────
+    const emptyState    = document.getElementById('emptyState');
+    const eventsList    = document.getElementById('eventsList');
+    const statTotal     = document.getElementById('statTotal');
+    const statLastTag   = document.getElementById('statLastTag');
+    const statLastSeen  = document.getElementById('statLastSeen');
+    const liveLabel     = document.getElementById('liveLabel');
+    const pollStatus    = document.getElementById('pollStatus');
+    const toast         = document.getElementById('toast');
+    const toastMsg      = document.getElementById('toastMsg');
+    const toastIcon     = document.getElementById('toastIcon');
+
+    // ── Helpers ───────────────────────────────────────────────────────
+    function fmtTime(iso) {
+      const d = new Date(iso);
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+    function fmtDate(iso) {
+      return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+    function relativeTime(iso) {
+      const diff = Math.floor((Date.now() - new Date(iso)) / 1000);
+      if (diff < 5)  return 'just now';
+      if (diff < 60) return `${diff}s ago`;
+      if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+      return fmtTime(iso);
+    }
+
+    function showToast(msg, isError = false) {
+      toastMsg.textContent = msg;
+      toastIcon.textContent = isError ? '✕' : '✓';
+      toast.classList.remove('translate-y-16', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+      setTimeout(() => {
+        toast.classList.add('translate-y-16', 'opacity-0');
+        toast.classList.remove('translate-y-0', 'opacity-100');
+      }, 2800);
+    }
+
+    // ── Render a single event card ────────────────────────────────────
+    function renderCard(ev, isNew = false) {
+      const data   = ev.data || {};
+      const tag    = data.tag_id || data.uid || data.rfid || data.card_id || data.id || '—';
+      const reader = data.reader_id || data.device || data.reader || ev.ip || 'IoT Device';
+      const extra  = Object.entries(data)
+        .filter(([k]) => !['tag_id','uid','rfid','card_id','id','reader_id','device','reader'].includes(k))
+        .map(([k,v]) => `<span class="bg-gray-800/80 px-2 py-0.5 rounded-lg text-xs text-gray-400"><span class="text-gray-500">${k}:</span> ${v}</span>`)
+        .join('');
+
+      const card = document.createElement('div');
+      card.id = `evt-${ev.id}`;
+      card.className = `event-card glass rounded-2xl p-5 border border-white/5 ${isNew ? 'tag-flash border-brand-500/40' : ''}`;
+
+      card.innerHTML = `
+        <div class="flex items-start justify-between gap-3 flex-wrap">
+          <!-- Tag ID + icon -->
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-brand-600/20 border border-brand-500/30 flex items-center justify-center flex-shrink-0">
+              <svg class="w-5 h-5 text-brand-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6Z"/>
+              </svg>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500 mb-0.5">Tag ID</p>
+              <p class="font-mono font-semibold text-brand-300 text-lg leading-none">${tag}</p>
+            </div>
+          </div>
+
+          <!-- Timestamp -->
+          <div class="text-right">
+            <p class="text-xs text-gray-500 mb-0.5">${fmtDate(ev.timestamp)}</p>
+            <p class="font-mono text-sm text-gray-300">${fmtTime(ev.timestamp)}</p>
+          </div>
+        </div>
+
+        <!-- Divider -->
+        <div class="my-4 border-t border-white/5"></div>
+
+        <!-- Meta row -->
+        <div class="flex flex-wrap gap-4 text-sm">
+          <div>
+            <span class="text-gray-600 text-xs">Reader / Device</span>
+            <p class="text-gray-300 font-medium mt-0.5">${reader}</p>
+          </div>
+          <div>
+            <span class="text-gray-600 text-xs">Source IP</span>
+            <p class="text-gray-300 font-mono font-medium mt-0.5">${ev.ip}</p>
+          </div>
+          <div>
+            <span class="text-gray-600 text-xs">Event ID</span>
+            <p class="text-gray-600 font-mono text-xs mt-0.5">${ev.id}</p>
+          </div>
+        </div>
+
+        <!-- Extra fields -->
+        ${extra ? `<div class="mt-3 flex flex-wrap gap-2">${extra}</div>` : ''}
+
+        <!-- Raw payload toggle -->
+        <details class="mt-4 group">
+          <summary class="cursor-pointer text-xs text-gray-600 hover:text-gray-400 transition-colors list-none flex items-center gap-1.5 select-none">
+            <svg class="w-3.5 h-3.5 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/>
+            </svg>
+            Raw payload
+          </summary>
+          <pre class="mt-2 text-xs font-mono text-gray-400 bg-gray-900/60 rounded-xl p-3 overflow-x-auto border border-white/5">${JSON.stringify(ev.data, null, 2)}</pre>
+        </details>
+      `;
+      return card;
+    }
+
+    // ── Update stats ──────────────────────────────────────────────────
+    function updateStats(events) {
+      statTotal.textContent = events.length;
+      if (events.length > 0) {
+        const last   = events[0];
+        const data   = last.data || {};
+        const tag    = data.tag_id || data.uid || data.rfid || data.card_id || data.id || '—';
+        statLastTag.textContent  = tag;
+        statLastSeen.textContent = relativeTime(last.timestamp);
+      } else {
+        statLastTag.textContent  = '—';
+        statLastSeen.textContent = '—';
+      }
+    }
+
+    // ── Poll & sync events ────────────────────────────────────────────
+    async function fetchEvents() {
+      try {
+        const res    = await fetch(`${BASE}/events.php`, { cache: 'no-store' });
+        const events = await res.json();
+
+        updateStats(events);
+
+        // Find truly new IDs
+        const newEvents = events.filter(e => !knownIds.has(e.id));
+        newEvents.forEach(e => knownIds.add(e.id));
+
+        if (events.length === 0) {
+          emptyState.classList.remove('hidden');
+          eventsList.classList.add('hidden');
+          eventsList.innerHTML = '';
+          return;
+        }
+
+        emptyState.classList.add('hidden');
+        eventsList.classList.remove('hidden');
+
+        // Prepend new cards
+        newEvents.forEach(ev => {
+          const card = renderCard(ev, true);
+          eventsList.prepend(card);
+          if (knownIds.size > 1) showToast(`Scan received: ${(ev.data?.tag_id || ev.data?.uid || ev.data?.rfid || 'unknown')}`);
+        });
+
+        // If the list was cleared remotely, repopulate
+        if (newEvents.length === 0 && eventsList.children.length !== events.length) {
+          eventsList.innerHTML = '';
+          events.forEach(ev => {
+            knownIds.add(ev.id);
+            eventsList.appendChild(renderCard(ev, false));
+          });
+        }
+
+        pollStatus.textContent = `Last sync: ${new Date().toLocaleTimeString()}`;
+      } catch (err) {
+        console.error('Poll error:', err);
+        pollStatus.textContent = 'Connection error — retrying…';
+      }
+    }
+
+    // ── Clear all ─────────────────────────────────────────────────────
+    document.getElementById('clearBtn').addEventListener('click', async () => {
+      if (!confirm('Clear all RFID scan events?')) return;
+      await fetch(`${BASE}/clear.php`, { method: 'POST' });
+      knownIds.clear();
+      eventsList.innerHTML = '';
+      eventsList.classList.add('hidden');
+      emptyState.classList.remove('hidden');
+      updateStats([]);
+      showToast('All events cleared.');
+    });
+
+    // ── Simulate scan ─────────────────────────────────────────────────
+    document.getElementById('testBtn').addEventListener('click', async () => {
+      const fakeTag = 'TAG-' + Math.random().toString(36).slice(2,10).toUpperCase();
+      const payload = {
+        tag_id:    fakeTag,
+        reader_id: 'SIM-READER-01',
+        rssi:      -((Math.random() * 40 + 40) | 0),
+        antenna:   1,
+      };
+      try {
+        const res = await fetch(`${BASE}/scan.php`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(payload),
+        });
+        const json = await res.json();
+        if (json.success) {
+          showToast('Simulated scan sent!');
+          await fetchEvents();
+        }
+      } catch (err) {
+        showToast('Simulation failed — is Apache running?', true);
+      }
+    });
+
+    // ── Copy URL ──────────────────────────────────────────────────────
+    document.getElementById('copyBtn').addEventListener('click', () => {
+      const url = document.getElementById('endpointUrl').textContent.trim();
+      navigator.clipboard.writeText(url).then(() => showToast('Endpoint URL copied!'));
+    });
+
+    // ── Relative time refresh ─────────────────────────────────────────
+    setInterval(() => {
+      if (eventsList.children.length > 0) updateStats(
+        [...knownIds].map(() => ({ timestamp: new Date().toISOString(), data: {} }))
+      );
+    }, 30_000);
+
+    // ── Boot ──────────────────────────────────────────────────────────
+    fetchEvents();
+    pollTimer = setInterval(fetchEvents, POLL_MS);
+  </script>
+</body>
+</html>
