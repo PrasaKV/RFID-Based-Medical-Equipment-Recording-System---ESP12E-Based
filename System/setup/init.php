@@ -70,6 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <?php if ($success): ?>
   <div class="mb-4 p-4 rounded-xl bg-teal-500/10 border border-teal-500/30 text-teal-300">
     ✅ Database setup complete!
+    <a href="/setup/seed.php" class="ml-3 underline font-semibold text-teal-300 hover:text-white">Seed Database with Sample Data →</a>
     <a href="/login.php" class="ml-3 underline font-semibold hover:text-teal-200">Go to Login →</a>
   </div>
   <div class="rounded-xl bg-slate-900/80 border border-slate-700 p-4 max-h-64 overflow-y-auto font-mono text-xs space-y-1">

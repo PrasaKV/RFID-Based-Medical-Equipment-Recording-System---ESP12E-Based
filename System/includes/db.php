@@ -44,6 +44,20 @@ function getDB(): ?PDO {
                     runMigrations($pdo);
                 }
             } catch (Throwable $ignored) {}
+
+            // Auto-seed database with default data if equipment table is empty
+            try {
+                $hasEquipment = $pdo->query("SELECT 1 FROM equipment LIMIT 1")->fetch();
+                if (!$hasEquipment) {
+                    $seedFile = __DIR__ . '/../setup/seed.php';
+                    if (file_exists($seedFile)) {
+                        require_once $seedFile;
+                        if (function_exists('seedDatabase')) {
+                            seedDatabase($pdo, false);
+                        }
+                    }
+                }
+            } catch (Throwable $ignored) {}
         }
     } catch (PDOException $e) {
         $pdo = null; // graceful fallback — file-based mode continues

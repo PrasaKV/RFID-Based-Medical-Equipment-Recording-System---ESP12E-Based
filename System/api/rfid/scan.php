@@ -23,10 +23,14 @@ header("Content-Type: application/json");
 $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
 $payload = [];
 
-if (str_contains($contentType, 'application/json')) {
-    $raw     = file_get_contents('php://input');
-    $payload = json_decode($raw, true) ?? [];
-} else {
+$raw = file_get_contents('php://input');
+if ($raw !== false && trim($raw) !== '') {
+    $decoded = json_decode($raw, true);
+    if (is_array($decoded)) {
+        $payload = $decoded;
+    }
+}
+if (empty($payload)) {
     $payload = $_POST;
 }
 
@@ -64,46 +68,51 @@ try {
 
     if ($db) {
         // Normalise tag ID field — IoT devices may send tag_id, cardId, uid, rfid, etc.
-        $tagId = $payload['tag_id'] ?? $payload['cardId'] ?? $payload['uid'] ?? $payload['rfid'] ?? null;
-        $mode  = strtolower($payload['mode'] ?? 'scan');
+        $rawTag = $payload['tag_id'] ?? $payload['cardId'] ?? $payload['uid'] ?? $payload['rfid'] ?? null;
+        $tagId  = $rawTag !== null ? trim((string)$rawTag) : null;
+        $mode   = strtolower((string)($payload['mode'] ?? 'scan'));
 
-        if ($tagId) {
+        if ($tagId !== null && $tagId !== '') {
             // Look up equipment by RFID tag
             $stmt = $db->prepare(
-                'SELECT equipment_id, name, status, current_location, pm_interval_days, next_pm_date
+                'SELECT equipment_id, name, serial_number, status, current_location, pm_interval_days, next_pm_date
                  FROM equipment WHERE rfid_tag_id = ? LIMIT 1'
             );
             $stmt->execute([$tagId]);
             $equipment = $stmt->fetch();
 
-            if ($equipment && $mode === 'scan') {
-                // Reader information sent in JSON
-                $sentLocation = trim($payload['location'] ?? $payload['dept'] ?? $payload['department'] ?? '');
-                $readerId     = trim($payload['reader_id'] ?? $payload['device'] ?? $payload['reader'] ?? $event['ip'] ?? 'READER');
-                $effectiveLocation = $sentLocation !== '' ? $sentLocation : ($equipment['current_location'] ?? 'Department Scanner');
-
-                // 1. Tag equipment with the scanned reader location
-                if ($sentLocation !== '') {
-                    $updateLoc = $db->prepare('UPDATE equipment SET current_location = ?, updated_at = NOW() WHERE equipment_id = ?');
-                    $updateLoc->execute([$sentLocation, $equipment['equipment_id']]);
-                    $equipment['current_location'] = $sentLocation;
-                }
-
-                // 2. Record this movement event in location history
-                $db->prepare(
-                    'INSERT INTO location_logs (equipment_id, reader_id, location) VALUES (?,?,?)'
-                )->execute([$equipment['equipment_id'], $readerId, $effectiveLocation]);
-
+            if ($equipment) {
                 $equipmentInfo = $equipment;
 
-                // 3. Auto-flag PM_DUE if overdue
-                if ($equipment['next_pm_date']) {
-                    $threshold = (new DateTime())->modify('+7 days')->format('Y-m-d');
-                    if ($equipment['next_pm_date'] <= $threshold && $equipment['status'] === 'OPERATIONAL') {
-                        $db->prepare("UPDATE equipment SET status='PM_DUE', updated_at=NOW() WHERE equipment_id=?")
-                           ->execute([$equipment['equipment_id']]);
-                        $equipmentInfo['status'] = 'PM_DUE';
+                // Reader information sent in JSON
+                $sentLocation = trim((string)($payload['location'] ?? $payload['dept'] ?? $payload['department'] ?? ''));
+                $readerId     = trim((string)($payload['reader_id'] ?? $payload['device'] ?? $payload['reader'] ?? ($event['ip'] ?? 'READER')));
+                $effectiveLocation = $sentLocation !== '' ? $sentLocation : ($equipment['current_location'] ?? 'Department Scanner');
+
+                if ($mode === 'scan') {
+                    // 1. Tag equipment with the scanned reader location
+                    if ($sentLocation !== '') {
+                        $updateLoc = $db->prepare('UPDATE equipment SET current_location = ?, updated_at = NOW() WHERE equipment_id = ?');
+                        $updateLoc->execute([$sentLocation, $equipment['equipment_id']]);
+                        $equipment['current_location'] = $sentLocation;
                     }
+
+                    // 2. Record this movement event in location history
+                    $db->prepare(
+                        'INSERT INTO location_logs (equipment_id, reader_id, location) VALUES (?,?,?)'
+                    )->execute([$equipment['equipment_id'], $readerId, $effectiveLocation]);
+
+                    // 3. Auto-flag PM_DUE if overdue
+                    if ($equipment['next_pm_date']) {
+                        $threshold = (new DateTime())->modify('+7 days')->format('Y-m-d');
+                        if ($equipment['next_pm_date'] <= $threshold && $equipment['status'] === 'OPERATIONAL') {
+                            $db->prepare("UPDATE equipment SET status='PM_DUE', updated_at=NOW() WHERE equipment_id=?")
+                               ->execute([$equipment['equipment_id']]);
+                            $equipment['status'] = 'PM_DUE';
+                        }
+                    }
+
+                    $equipmentInfo = $equipment;
                 }
             }
         }

@@ -58,14 +58,25 @@ A PHP/MySQL medical-equipment management system with ESP8266 RFID scanning. The 
    http://localhost/setup/init.php
    ```
 
-6. Click **Run Setup SQL**. This creates the `rfid-system` database, tables, roles, sample records, and initial users.
-7. Sign in at:
+6. Click **Run Setup SQL**. This creates the `rfid-system` database, tables, roles, and initial users.
+7. To populate the system with realistic hospital medical equipment, RFID movement history, maintenance schedules, repair logs, and issue tickets, run the seeder:
+
+   - **From Browser**: open `http://localhost/setup/seed.php` and click **Seed Database**
+   - **From Terminal (CLI)**:
+     ```bash
+     php System/setup/seed.php
+     # Or to wipe and re-seed from scratch:
+     php System/setup/seed.php --fresh
+     ```
+   *(Note: `System/includes/db.php` will also automatically trigger the seeder on initial connection if tables are empty).*
+
+8. Sign in at:
 
    ```text
    http://localhost/login.php
    ```
 
-8. After setup, restrict or remove access to `System/setup/`.
+9. After setup, restrict or remove access to `System/setup/`.
 
 ### Alternative database setup
 
@@ -75,7 +86,7 @@ The schema can also be applied from the MySQL client:
 mysql -u root -p < System/setup/setup.sql
 ```
 
-If the database connection succeeds, `System/includes/db.php` automatically runs the migration checks in `System/setup/migrate.php`.
+If the database connection succeeds, `System/includes/db.php` automatically runs the migration checks in `System/setup/migrate.php` and auto-seeds initial data.
 
 ## Default Accounts
 

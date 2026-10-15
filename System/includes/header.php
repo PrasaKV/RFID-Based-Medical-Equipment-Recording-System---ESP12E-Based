@@ -932,15 +932,15 @@ async function submitPutToRepair(e) {
 function openRecordDeliveryFromScan() {
   closeScanPopup();
   if (!currentScanEquipment) return;
-  openRecordDeliveryModal(currentScanEquipment.equipment_id, currentScanEquipment.name, currentScanEquipment.serial_number);
+  openRecordDeliveryModal(currentScanEquipment.equipment_id, currentScanEquipment.name, currentScanEquipment.serial_number, currentScanEquipment.location);
 }
 
-async function openRecordDeliveryModal(equipId, machineName, serialNum) {
+async function openRecordDeliveryModal(equipId, machineName, serialNum, defaultDept = '') {
   document.getElementById('rd_equipment_id').value = equipId;
   document.getElementById('rd_machine_name').textContent = machineName || '—';
   document.getElementById('rd_serial_number').textContent = serialNum || '—';
   document.getElementById('rd_datetime').value = new Date().toLocaleString();
-  populateDepartmentSelect('rd_department', 'Select Department…');
+  populateDepartmentSelect('rd_department', 'Select Department…', defaultDept);
   document.getElementById('rdError').classList.add('hidden');
 
   // Find the active repair_id for this equipment
