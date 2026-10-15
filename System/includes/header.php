@@ -401,6 +401,7 @@ function isActive(string $p): string {
       <p id="popupLabel" class="text-xs text-teal-400 font-semibold uppercase tracking-wider mb-0.5">RFID Scan Detected</p>
       <p id="popupDeviceName" class="text-sm font-bold text-white truncate">—</p>
       <p id="popupDeviceSerial" class="text-xs font-mono text-teal-300 mt-0.5">—</p>
+      <p id="popupDeviceLocation" class="text-xs text-teal-200 mt-0.5 flex items-center gap-1 font-medium"></p>
       <p id="popupDeviceStatus" class="text-xs text-slate-400 mt-0.5">—</p>
     </div>
     <button onclick="closeScanPopup()" class="text-slate-600 hover:text-slate-300 flex-shrink-0 transition-colors">✕</button>
@@ -451,6 +452,12 @@ function isActive(string $p): string {
             <option value="Monitoring">Monitoring</option>
             <option value="Lab">Lab</option>
             <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Department / Location</label>
+          <select id="reg_location" name="current_location">
+            <option value="">Select Department…</option>
           </select>
         </div>
         <div class="form-group">
@@ -755,7 +762,7 @@ async function pollEvents() {
           // Tag exists — show popup with context-aware buttons
           showContextScanPopup(latest);
         } else {
-          openRegisterModal(tagId);
+          openRegisterModal(tagId, latest.equipment_location || latest.data?.location || '');
         }
       } else {
         // Mode = scan
@@ -781,6 +788,14 @@ function showContextScanPopup(ev) {
   document.getElementById('popupDeviceName').textContent = ev.equipment_name || 'Device Found';
   document.getElementById('popupDeviceSerial').textContent = 'S/N: ' + (ev.equipment_serial || '—');
   document.getElementById('popupDeviceStatus').textContent = 'Status: ' + (ev.equipment_status || 'OPERATIONAL');
+  
+  const locEl = document.getElementById('popupDeviceLocation');
+  if (locEl) {
+    const locText = ev.equipment_location ? `📍 Location: ${ev.equipment_location}` : '';
+    locEl.textContent = locText;
+    locEl.classList.toggle('hidden', !locText);
+  }
+
   document.getElementById('popupLabel').textContent = 'RFID Scan Detected';
 
   // Store for modals
@@ -826,14 +841,24 @@ function showContextScanPopup(ev) {
 
 function showNoDeviceFoundPopup(ev, tagId) {
   const pop = document.getElementById('scanPopup');
+  const locVal = ev.equipment_location || ev.data?.location || '';
+  
   document.getElementById('popupDeviceName').textContent = '⚠️ No Device Found';
   document.getElementById('popupDeviceSerial').textContent = 'Tag ID: ' + (tagId || 'Unknown');
+  
+  const locEl = document.getElementById('popupDeviceLocation');
+  if (locEl) {
+    locEl.textContent = locVal ? `📍 Scanned at: ${locVal}` : '';
+    locEl.classList.toggle('hidden', !locVal);
+  }
+
   document.getElementById('popupDeviceStatus').textContent = 'No matching equipment registered in DB';
   document.getElementById('popupLabel').textContent = 'Unknown Tag Scanned';
 
+  const safeLoc = locVal.replace(/'/g, "\\'");
   const btnBox = document.getElementById('popupButtons');
   btnBox.innerHTML = `
-    <button onclick="closeScanPopup(); openRegisterModal('${tagId}')" class="flex-1 text-center text-xs font-semibold py-1.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-600/30 transition-colors">
+    <button onclick="closeScanPopup(); openRegisterModal('${tagId}', '${safeLoc}')" class="flex-1 text-center text-xs font-semibold py-1.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-600/30 transition-colors">
       Register This Device
     </button>
     <button onclick="closeScanPopup()" class="text-xs font-medium py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 transition-colors">
@@ -1075,9 +1100,10 @@ async function performManualScan() {
 }
 
 // ── Register modal ────────────────────────────────────────
-function openRegisterModal(tagId) {
+function openRegisterModal(tagId, defaultLoc = '') {
   document.getElementById('reg_rfid_tag_id').value = tagId;
   populateCategorySelect('reg_category', 'Select Category…');
+  populateDepartmentSelect('reg_location', 'Select Department…', defaultLoc);
   document.getElementById('registerModal').classList.remove('hidden');
 }
 function closeRegisterModal() {

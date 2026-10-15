@@ -77,17 +77,26 @@ try {
             $equipment = $stmt->fetch();
 
             if ($equipment && $mode === 'scan') {
-                $equipmentInfo = $equipment;
+                // Reader information sent in JSON
+                $sentLocation = trim($payload['location'] ?? $payload['dept'] ?? $payload['department'] ?? '');
+                $readerId     = trim($payload['reader_id'] ?? $payload['device'] ?? $payload['reader'] ?? $event['ip'] ?? 'READER');
+                $effectiveLocation = $sentLocation !== '' ? $sentLocation : ($equipment['current_location'] ?? 'Department Scanner');
 
-                // Log the location event using equipment's recorded department
-                $readerId = $payload['reader_id'] ?? $payload['device'] ?? $event['ip'];
-                $location = $equipment['current_location'] ?? 'Department Scanner';
+                // 1. Tag equipment with the scanned reader location
+                if ($sentLocation !== '') {
+                    $updateLoc = $db->prepare('UPDATE equipment SET current_location = ?, updated_at = NOW() WHERE equipment_id = ?');
+                    $updateLoc->execute([$sentLocation, $equipment['equipment_id']]);
+                    $equipment['current_location'] = $sentLocation;
+                }
 
+                // 2. Record this movement event in location history
                 $db->prepare(
                     'INSERT INTO location_logs (equipment_id, reader_id, location) VALUES (?,?,?)'
-                )->execute([$equipment['equipment_id'], $readerId, $location]);
+                )->execute([$equipment['equipment_id'], $readerId, $effectiveLocation]);
 
-                // Auto-flag PM_DUE if overdue
+                $equipmentInfo = $equipment;
+
+                // 3. Auto-flag PM_DUE if overdue
                 if ($equipment['next_pm_date']) {
                     $threshold = (new DateTime())->modify('+7 days')->format('Y-m-d');
                     if ($equipment['next_pm_date'] <= $threshold && $equipment['status'] === 'OPERATIONAL') {

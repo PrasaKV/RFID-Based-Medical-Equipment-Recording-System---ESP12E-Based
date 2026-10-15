@@ -23,7 +23,10 @@ String Msg = "";
 
 bool Mode = false;
 
-
+// ── Reader Identity & Hardcoded Location ────────────────────────────────────
+// Set the hardcoded department location and reader ID for this physical unit
+const String Location = "ICU";             // e.g. "ICU", "Emergency", "Radiology", "Ward A", "Surgery", "Lab"
+const String ReaderID = "READER-ICU-01";   // Unique identifier for this reader
 
 const char* ssid = "Dialog 4G";
 const char* password = "123456789A";
@@ -129,6 +132,8 @@ void loop() {
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("UID: " + CardID);
+    lcd.setCursor(0, 1);
+    lcd.print("Loc: " + Location);
 
     rfid.PICC_HaltA();
     rfid.PCD_StopCrypto1();
@@ -179,32 +184,34 @@ void postRequest(String CardID, bool mode){
     http.begin(client,"http://192.168.8.159:8080/api/rfid/scan.php");
     http.addHeader("Content-Type", "application/json");
 
+    // Correct JSON format with hardcoded Location and ReaderID
     String registerJson = "{"
-            "\"mode\":\"register\""","
-            "\"tag_id\":\"" +CardID+ "\""
+            "\"mode\":\"register\","
+            "\"tag_id\":\"" + CardID + "\","
+            "\"location\":\"" + Location + "\","
+            "\"reader_id\":\"" + ReaderID + "\""
             "}";
     
     String scanJson = "{"
-            "\"mode\":\"scan\""","
-            "\"tag_id\":\"" +CardID+ "\""
+            "\"mode\":\"scan\","
+            "\"tag_id\":\"" + CardID + "\","
+            "\"location\":\"" + Location + "\","
+            "\"reader_id\":\"" + ReaderID + "\""
             "}";
 
-    if (Mode){
-        
-        http.POST(registerJson);
-
-      }else{
-
-        http.POST(scanJson);
-
-      }
+    int responseCode = 0;
+    if (mode){
+        responseCode = http.POST(registerJson);
+        Serial.print("Register Payload: ");
+        Serial.println(registerJson);
+    }else{
+        responseCode = http.POST(scanJson);
+        Serial.print("Scan Payload: ");
+        Serial.println(scanJson);
+    }
     
-    
-    // Serial.print("Response Code: ");
-    // Serial.println(responseCode);
-
-    // Serial.print("Payload Sent: ");
-    // Serial.println(scanJson);
+    Serial.print("Response Code: ");
+    Serial.println(responseCode);
 
     http.end();
 

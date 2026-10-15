@@ -44,19 +44,23 @@ foreach ($events as &$event) {
                 $event['equipment_name']     = $eq['name'];
                 $event['equipment_serial']   = $eq['serial_number'];
                 $event['equipment_status']   = $eq['status'];
-                $event['equipment_location'] = $eq['current_location'];
+                $event['equipment_location'] = $eq['current_location'] ?: ($data['location'] ?? null);
             } else {
-                $event['equipment_id']   = null;
-                $event['equipment_name'] = null;
+                $event['equipment_id']       = null;
+                $event['equipment_name']     = null;
+                $event['equipment_location'] = $data['location'] ?? null;
             }
         } catch (PDOException $e) {
-            $event['equipment_id']   = null;
-            $event['equipment_name'] = null;
+            $event['equipment_id']       = null;
+            $event['equipment_name']     = null;
+            $event['equipment_location'] = $data['location'] ?? null;
         }
     } else {
-        $event['equipment_id']   = null;
-        $event['equipment_name'] = null;
+        $event['equipment_id']       = null;
+        $event['equipment_name']     = null;
+        $event['equipment_location'] = $data['location'] ?? null;
     }
+    $event['reader_id'] = $data['reader_id'] ?? null;
 }
 unset($event);
 

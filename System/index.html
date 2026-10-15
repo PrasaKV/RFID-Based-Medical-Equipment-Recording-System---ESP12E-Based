@@ -296,9 +296,11 @@
       const tag    = data.tag_id || data.uid || data.rfid || data.card_id || data.id || '—';
       const reader = data.reader_id || data.device || data.reader || ev.ip || 'IoT Device';
       const extra  = Object.entries(data)
-        .filter(([k]) => !['tag_id','uid','rfid','card_id','id','reader_id','device','reader'].includes(k))
+        .filter(([k]) => !['tag_id','uid','rfid','card_id','id','reader_id','device','reader','location'].includes(k))
         .map(([k,v]) => `<span class="bg-gray-800/80 px-2 py-0.5 rounded-lg text-xs text-gray-400"><span class="text-gray-500">${k}:</span> ${v}</span>`)
         .join('');
+
+      const locName = data.location || ev.equipment_location || '';
 
       const card = document.createElement('div');
       card.id = `evt-${ev.id}`;
@@ -337,6 +339,11 @@
             <span class="text-gray-600 text-xs">Reader / Device</span>
             <p class="text-gray-300 font-medium mt-0.5">${reader}</p>
           </div>
+          ${locName ? `
+          <div>
+            <span class="text-gray-600 text-xs">Location</span>
+            <p class="text-teal-300 font-medium mt-0.5">📍 ${locName}</p>
+          </div>` : ''}
           <div>
             <span class="text-gray-600 text-xs">Source IP</span>
             <p class="text-gray-300 font-mono font-medium mt-0.5">${ev.ip}</p>
